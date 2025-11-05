@@ -1,0 +1,237 @@
+说明：
+$chat_id是ims_website_chatlist数据表的id，ims_website_chatlist的表字段为：
+id,uid,origin_content（用户问题文本），content（用户问题文本的中文翻译），associations（关联‘订单、商品、文件’信息），is_ai（是否AI回复），ai_times（AI回复时间）
+
+associations在表中的数据格式为：{"orders":["3","4"],"products":["37920","37921"],"files":[{"id":"8","name":"1.png","path":"/uploads/chat_files/20250721/687df99e7c123.png","task_id":"vec_69046b70a4a33"},{"id":"10","name":"nail.jpg","path":"/uploads/chat_files/20250722/687f931ec24b0.jpg","task_id":"vec_69046b70a4a34"}]}
+
+上传文件前端代码：
+// 全局变量
+    let currentTaskId = null;
+    let pollInterval = null;
+
+    // 处理文件上传
+    function handleFileUpload(file) {
+        if (!file) return;
+
+        // 检查文件大小 (5MB限制)
+        if (file.size > 5 * 1024 * 1024) {
+            showHint(`文件 ${file.name} 超过5MB限制`);
+            return;
+        }
+
+        // 检查文件类型
+        // const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'text/plain',
+        //     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        //     'audio/mpeg', 'video/mp4', 'application/pdf',
+        //     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        //     'text/csv'];
+
+        const validTypes = [
+            'image/jpeg', 'image/png', 'image/jpg',  // .jpg/png/jpeg
+            'text/plain',                           // .txt
+            'audio/mpeg',                           // .mp3
+            'video/mp4',                            // .mp4
+            'application/pdf',                      // .pdf
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',       // .xlsx
+            'application/vnd.ms-excel',             // .xls
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation' // .pptx
+        ];
+
+        if (!validTypes.includes(file.type)) {
+            showHint(`不支持的文件类型: ${file.name}`);
+            return;
+        }
+        
+        showLoading();
+
+        // 创建 FormData 对象并上传文件
+        const formData = new FormData();
+        formData.append('file', file);
+        $.ajax({
+            url: '/?s=memberc/upload_file', // 文件上传接口
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(res) {
+                if (res.code === 0) {
+                    // 1. 保存文件信息
+                    associatedInfo.files.push({
+                        id: res.file_id, // 服务器返回的文件ID
+                        name: file.name,
+                        size: file.size,
+                        type: file.type,
+                        task_id: res.task_id,
+                        path: res.file_path // 服务器返回的文件路径
+                    });
+
+                    // 更新UI
+                    updateAssociatedInfo();
+
+                    showHint(`文件上传成功: ${file.name}`);
+                } else {
+                    showHint(`文件上传失败: ${res.msg}`);
+                }
+            },
+            error: function() {
+                showHint('文件上传失败，请重试');
+            }
+        });
+
+
+        // 更新UI
+        updateAssociatedInfo();
+        showHint(`已添加文件: ${file.name}`);
+        hideLoading();
+    }
+
+
+上传文件PHP代码：
+#接收上传的文件信息
+    public function upload_file(Request $request){
+        $file = $_FILES['file'] ?? null;
+
+        if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
+            return json(['code' => -1, 'msg' => '文件上传失败']);
+        }
+
+        $rootPath = $_SERVER['DOCUMENT_ROOT'];
+        $relativePath = '/uploads/chat_files/' . date('Ymd') . '/';
+        $uploadPath = $rootPath . $relativePath;
+
+        if (!is_dir($uploadPath) && !mkdir($uploadPath, 0755, true)) {
+            return json(['code' => -1, 'msg' => '目录创建失败']);
+        }
+
+        $filename = uniqid() . '.' . pathinfo($file['name'], PATHINFO_EXTENSION);
+        $targetFile = $uploadPath . $filename;
+        $relativeFilePath = $relativePath . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $targetFile)) {
+            Log::error("文件移动失败: " . print_r(error_get_last(), true));
+            return json(['code' => -1, 'msg' => '文件保存失败']);
+        }
+
+        // 1. 保存到数据库
+        $fileId = Db::name('website_chatfiles')->insertGetId([
+            'original_name' => $file['name'],
+            'file_path' => $relativeFilePath,
+            'file_size' => $file['size'],
+            'file_type' => $file['type'],
+            'createtime' => time()
+        ]);
+
+        // 2. 启动异步向量化任务（Celery）
+        $task_id = $this->startVectorizeTask($targetFile, $fileId);
+
+        return json([
+            'code' => 0,
+            'file_id' => $fileId,
+            'file_path' => $relativeFilePath,
+            'task_id' => $task_id,           // 新增：返回任务ID
+            'status' => 'processing',        // 新增：初始状态
+            'poll_url' => '/?s=memberc/query_status'  // 新增：轮询地址
+        ]);
+    }
+
+    /**
+     * 启动 Celery 异步向量化任务
+     */
+    private function startVectorizeTask($fullPath, $fileId)
+    {
+        $task_id = 'vec_' . uniqid();
+
+        $args = [
+            [$fullPath],    // file_paths
+            $task_id,
+            $fileId         // 可选：关联文件ID
+        ];
+
+        $command = "cd /app && "
+            . "source /app/rag_multi_env/bin/activate && "
+            . "celery -A vectorize call vectorize.process_file "
+            . "--args='" . json_encode($args, JSON_UNESCAPED_UNICODE) . "' "
+            . "--queue=file_processing > /dev/null 2>&1 & echo $!";
+
+        $output = shell_exec($command);
+        $pid = trim($output);
+
+        // 记录任务状态到 Redis（确保你有 Redis 连接）
+        $redis = new \Redis();
+        $redis->connect('127.0.0.1', 6379);
+        $redis->hSet("task:{$task_id}", "status", "pending");
+        $redis->hSet("task:{$task_id}", "file_id", $fileId);
+        $redis->hSet("task:{$task_id}", "create_time", date('c'));
+        $redis->expire("task:{$task_id}", 3600);
+
+        return $task_id;
+    }
+
+聊天前端的部分后台代码：
+public function ai_response(Request $request){
+        $dat = input();
+        $content = trim($dat['content']);
+        $chat_pid = intval($dat['chat_pid']);
+        $chat_id = intval($dat['chat_id']);
+
+	#可查询开关
+            $can_search = 1;
+
+            $redis = new \Redis();
+            $redis->connect('127.0.0.1', 6379);
+
+
+            #获取本次对话文件
+            $chatinfo = Db::name('website_chatlist')->where(['id'=>$chat_id])->find();
+            $chatinfo['associations'] = json_decode($chatinfo['associations'],true);
+
+            foreach($chatinfo['associations']['files'] as $k=>$v){
+                $status = $redis->hGet("task:{$v['task_id']}", "status");
+                if ($status != 'completed') {
+                    $can_search = 0;
+                }
+            }
+
+            if($can_search==1){
+                //可查询
+                $post = ['question'=>$content,'chat_pid'=>$chat_pid,'chat_id'=>$chat_id];
+                $res = httpRequest('https://rte.gogo198.cn/query.php', $post);
+                $res = json_decode($res,true);
+
+                if($res['status']=='success'){
+                    $info = ['content'=>''];
+                    if($res['insert_id']>0){
+                        $info = Db::name('website_chatlist')->where(['id'=>$res['insert_id']])->find();
+                    }
+
+                    return json(['code'=>0,'reply'=>$info['content'],'msg_id'=>$res['insert_id']]);
+                }
+                else{
+                    return json(['code'=>-1,'msg'=>$res['message']]);
+                }
+            }else{
+                //不可查询
+                return json(['code'=>-1,'msg'=>'提交过快，请稍后操作']);
+            }
+}
+
+function httpRequest($url,$data,$head=[])
+{
+    // 强制类型检查
+    if (!is_array($head)) {
+        $head = [];
+    }
+    $ch=curl_init();
+    curl_setopt($ch,CURLOPT_URL,$url);
+    curl_setopt($ch,CURLOPT_RETURNTRANSFER,1);
+    curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
+    curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,false);
+    curl_setopt($ch,CURLOPT_POST,1);
+    curl_setopt($ch,CURLOPT_POSTFIELDS,$data);
+
+    curl_setopt($ch, CURLOPT_HTTPHEADER,$head);
+    $output=curl_exec($ch);
+    curl_close($ch);
+    return $output;
+}

@@ -1,0 +1,146 @@
+; 多模态RAG系统配置文件 - 深圳服务器专用
+; 版本: 2.0
+; 最后修改: 2025-10-21
+
+; ==================== 数据库配置 ====================
+[Database]
+; 数据库连接配置
+host = rm-wz9mt4j79jrdh0p3z.mysql.rds.aliyuncs.com
+port = 3306
+username = gogo198
+password = Gogo@198 #${DB_PASSWORD}
+database_name = shop
+charset = utf8mb4
+
+; 连接池配置
+max_connections = 20
+connection_timeout = 30
+idle_timeout = 300
+
+; ==================== Kafka配置 ====================
+[Kafka]
+; 使用公网IP地址
+bootstrap_servers = 39.108.11.214:9092
+
+; 生产者配置
+producer_client_id = rag_shenzhen_producer_01
+producer_acks = 1
+producer_compression_type = gzip
+producer_batch_size = 16384
+producer_linger_ms = 10
+
+; 主题配置
+topic_file_upload = rag.file.upload.shenzhen
+topic_task_status = rag.task.status.shenzhen
+topic_vector_data = vector-data
+
+; ==================== 模型配置 ====================
+[Models]
+; 文本模型配置 - 使用中文优化模型
+text_model_name = shibing624--text2vec-base-chinese
+text_model_path = /var/cache/huggingface/
+text_weight = 0.7
+text_dimension = 768
+
+; 图像模型配置 - 使用支持中文的CLIP模型，维度768
+image_model_name = OFA-Sys--chinese-clip-vit-large-patch14
+image_model_path = /var/cache/huggingface/
+image_weight = 0.8
+image_dimension = 768
+
+; 视频模型配置 - 使用与图像相同的中文CLIP模型，维度统一为768
+video_model_name = OFA-Sys--chinese-clip-vit-large-patch14
+video_model_path = /var/cache/huggingface/
+video_weight = 0.6
+video_dimension = 768
+
+; 多模态融合配置
+multi_element_adjust = 0.1
+fusion_strategy = weighted_average
+normalize_embeddings = true
+
+; 模型加载配置
+model_load_timeout = 300
+model_health_check_interval = 3600
+
+; 视频处理参数
+video_frame_interval = 10  ; 每10帧提取一帧
+max_frames_per_video = 100 ; 每个视频最多处理100帧
+
+; ==================== 文件处理配置 ====================
+[FileProcessing]
+; 文件大小限制
+max_file_size = 104857600
+max_file_count = 10
+
+; 支持的文件类型（侧重中文文档）
+allowed_image_types = image/jpeg,image/png,image/gif,image/webp
+allowed_video_types = video/mp4,video/avi,video/mov
+allowed_text_types = text/plain,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown
+
+; 中文文档处理专用配置
+chinese_text_encoding = utf-8,gbk,gb2312
+enable_chinese_ocr = true
+chinese_keyword_extraction = true
+
+; 文件存储配置
+upload_temp_path = /tmp/rag_uploads/shenzhen/
+processed_file_path = /data/processed_files/shenzhen/
+retention_days = 30
+
+; ==================== 任务管理配置 ====================
+[TaskManager]
+; 任务队列配置
+max_queue_size = 1000
+default_priority = 5
+
+; 任务执行配置
+max_concurrent_tasks = 8
+task_timeout = 3600
+max_retries = 3
+
+; ==================== 服务器配置 ====================
+[Server]
+; Web服务器配置
+host = 0.0.0.0
+port = 8080
+workers = 4
+
+; API配置
+api_prefix = /api/v1
+enable_cors = true
+
+; ==================== 日志配置 ====================
+[Logging]
+level = INFO
+log_file = /var/log/multimodal_rag/shenzhen.log
+max_file_size = 104857600
+backup_count = 5
+
+; 日志格式（包含中文支持）
+;format = %(asctime)s - %(name)s - %(levelname)s - %(message)s
+date_format = %Y-%m-%d %H:%M:%S
+
+; ==================== 监控配置 ====================
+[Monitoring]
+; 监控开关
+enable_health_checks = true
+enable_metrics = true
+
+; 健康检查配置
+health_check_interval = 60
+service_timeout_threshold = 30
+
+; ==================== 网络优化配置 ====================
+[Network]
+; 国内网络优化
+enable_cdn_acceleration = true
+domestic_model_mirror = https://mirror.sjtu.edu.cn/huggingface
+proxy_for_international = false
+
+; ==================== 远程索引服务配置 ====================
+[RemoteIndex]
+; 深圳服务器不构建索引，但需要知道索引服务地址
+index_service_url = http://47.254.122.81:8081/api/v1/index
+index_service_timeout = 30
+enable_index_health_check = true

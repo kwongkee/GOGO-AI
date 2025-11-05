@@ -1,0 +1,69 @@
+ngchain_env) root@iZrj9amwut3bthvroh7rusZ:~/customer_ai# python hf_proxy.py
+Python路径: /root/customer_ai/langchain_env/bin/python
+工作目录: /root/customer_ai
+2025-11-04 14:11:08,697 - __main__ - INFO - [hf_proxy.py:437] - 加载文本嵌入模型...
+2025-11-04 14:11:08,758 - sentence_transformers.SentenceTransformer - INFO - [SentenceTransformer.py:227] - Load pretrained SentenceTransformer: /root/.cache/huggingface/hub/models--shibing624--text2vec-base-chinese/snapshots/183bb99aa7af74355fb58d16edf8c13ae7c5433e
+2025-11-04 14:11:08,853 - __main__ - INFO - [hf_proxy.py:444] - 文本嵌入模型加载成功
+/root/customer_ai/hf_proxy.py:452: LangChainDeprecationWarning: The class `HuggingFaceEndpoint` was deprecated in LangChain 0.0.37 and will be removed in 1.0. An updated version of the class exists in the :class:`~langchain-huggingface package and should be used instead. To use it run `pip install -U :class:`~langchain-huggingface` and import as `from :class:`~langchain_huggingface import HuggingFaceEndpoint``.
+  llm = HuggingFaceEndpoint(
+2025-11-04 14:11:08,855 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): huggingface.co:443
+2025-11-04 14:11:08,970 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "GET /api/whoami-v2 HTTP/1.1" 200 1474
+2025-11-04 14:11:08,972 - __main__ - INFO - [hf_proxy.py:460] - DeepSeek LLM初始化成功
+2025-11-04 14:11:09,071 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/config.json HTTP/1.1" 307 0
+2025-11-04 14:11:09,078 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /api/resolve-cache/models/OFA-Sys/chinese-clip-vit-large-patch14/660941af70c6ff89ce658a1735404c0f3e536c38/config.json HTTP/1.1" 200 0
+2025-11-04 14:11:09,163 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/config.json HTTP/1.1" 307 0
+2025-11-04 14:11:09,171 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /api/resolve-cache/models/OFA-Sys/chinese-clip-vit-large-patch14/660941af70c6ff89ce658a1735404c0f3e536c38/config.json HTTP/1.1" 200 0
+2025-11-04 14:11:09,263 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/model.safetensors HTTP/1.1" 404 0
+2025-11-04 14:11:09,265 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): huggingface.co:443
+2025-11-04 14:11:09,456 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "GET /api/models/OFA-Sys/chinese-clip-vit-large-patch14 HTTP/1.1" 200 2481
+2025-11-04 14:11:09,617 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "GET /api/models/OFA-Sys/chinese-clip-vit-large-patch14/commits/main HTTP/1.1" 200 3024
+2025-11-04 14:11:09,755 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "GET /api/models/OFA-Sys/chinese-clip-vit-large-patch14/discussions?p=0 HTTP/1.1" 200 2063
+2025-11-04 14:11:09,908 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "GET /api/models/OFA-Sys/chinese-clip-vit-large-patch14/commits/refs%2Fpr%2F3 HTTP/1.1" 200 3989
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+2025-11-04 14:11:10,003 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/refs%2Fpr%2F3/model.safetensors.index.json HTTP/1.1" 404 0
+2025-11-04 14:11:10,016 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/preprocessor_config.json HTTP/1.1" 307 0
+2025-11-04 14:11:10,022 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /api/resolve-cache/models/OFA-Sys/chinese-clip-vit-large-patch14/660941af70c6ff89ce658a1735404c0f3e536c38/preprocessor_config.json HTTP/1.1" 200 0
+2025-11-04 14:11:10,100 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/refs%2Fpr%2F3/model.safetensors HTTP/1.1" 302 0
+2025-11-04 14:11:10,109 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/processor_config.json HTTP/1.1" 404 0
+2025-11-04 14:11:10,323 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/tokenizer_config.json HTTP/1.1" 404 0
+2025-11-04 14:11:10,469 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "GET /api/models/OFA-Sys/chinese-clip-vit-large-patch14/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+2025-11-04 14:11:10,559 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/vocab.txt HTTP/1.1" 307 0
+2025-11-04 14:11:10,566 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /api/resolve-cache/models/OFA-Sys/chinese-clip-vit-large-patch14/660941af70c6ff89ce658a1735404c0f3e536c38/vocab.txt HTTP/1.1" 200 0
+2025-11-04 14:11:10,678 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "GET /api/models/OFA-Sys/chinese-clip-vit-large-patch14/tree/main/additional_chat_templates?recursive=False&expand=False HTTP/1.1" 404 64
+2025-11-04 14:11:10,764 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/processor_config.json HTTP/1.1" 404 0
+2025-11-04 14:11:10,857 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/chat_template.json HTTP/1.1" 404 0
+2025-11-04 14:11:10,983 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/chat_template.jinja HTTP/1.1" 404 0
+2025-11-04 14:11:11,066 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://huggingface.co:443 "HEAD /OFA-Sys/chinese-clip-vit-large-patch14/resolve/main/audio_tokenizer_config.json HTTP/1.1" 404 0
+2025-11-04 14:11:11,078 - __main__ - INFO - [hf_proxy.py:482] - CLIP模型加载成功
+2025-11-04 14:11:11,580 - __main__ - INFO - [hf_proxy.py:496] - Whisper模型加载成功
+2025-11-04 14:11:11,581 - __main__ - INFO - [hf_proxy.py:544] - 所有模型加载完成
+2025-11-04 14:11:11,617 - __main__ - INFO - [hf_proxy.py:1737] - === 开始强制初始化应用 ===
+2025-11-04 14:11:11,617 - __main__ - INFO - [hf_proxy.py:1551] - 开始初始化应用组件...
+2025-11-04 14:11:11,617 - __main__ - INFO - [hf_proxy.py:1555] - 加载文本嵌入模型...
+2025-11-04 14:11:11,617 - sentence_transformers.SentenceTransformer - INFO - [SentenceTransformer.py:219] - Use pytorch device_name: cpu
+2025-11-04 14:11:11,617 - sentence_transformers.SentenceTransformer - INFO - [SentenceTransformer.py:227] - Load pretrained SentenceTransformer: /root/.cache/huggingface/hub/models--shibing624--text2vec-base-chinese/snapshots/183bb99aa7af74355fb58d16edf8c13ae7c5433e
+2025-11-04 14:11:11,680 - __main__ - INFO - [hf_proxy.py:1557] - 文本嵌入模型加载完成
+2025-11-04 14:11:11,680 - __main__ - INFO - [hf_proxy.py:1561] - 加载FAISS索引从: /customer_ai/faiss_index
+2025-11-04 14:11:11,681 - faiss.loader - DEBUG - [loader.py:95] - Environment variable FAISS_OPT_LEVEL is not set, so let's pick the instruction set according to the current CPU
+2025-11-04 14:11:11,681 - faiss.loader - INFO - [loader.py:107] - Loading faiss with AVX512-SPR support.
+2025-11-04 14:11:11,681 - faiss.loader - INFO - [loader.py:112] - Could not load library with AVX512-SPR support due to:
+ModuleNotFoundError("No module named 'faiss.swigfaiss_avx512_spr'")
+2025-11-04 14:11:11,681 - faiss.loader - INFO - [loader.py:119] - Loading faiss with AVX512 support.
+2025-11-04 14:11:11,693 - faiss.loader - INFO - [loader.py:121] - Successfully loaded faiss with AVX512 support.
+2025-11-04 14:11:11,696 - __main__ - INFO - [hf_proxy.py:1566] - 全局FAISS索引加载成功
+2025-11-04 14:11:11,696 - __main__ - INFO - [hf_proxy.py:1572] - 初始化LLM服务...
+/root/customer_ai/hf_proxy.py:1586: LangChainDeprecationWarning: The class `Ollama` was deprecated in LangChain 0.3.1 and will be removed in 1.0.0. An updated version of the class exists in the :class:`~langchain-ollama package and should be used instead. To use it run `pip install -U :class:`~langchain-ollama` and import as `from :class:`~langchain_ollama import OllamaLLM``.
+  llm = Ollama(
+2025-11-04 14:11:11,696 - __main__ - INFO - [hf_proxy.py:1591] - Ollama LLM初始化成功
+2025-11-04 14:11:11,696 - __main__ - INFO - [hf_proxy.py:1575] - 应用组件初始化全部完成
+2025-11-04 14:11:11,696 - __main__ - INFO - [hf_proxy.py:1745] - === 应用初始化完成，启动Flask服务 ===
+2025-11-04 14:11:11,696 - __main__ - INFO - [hf_proxy.py:1755] - Flask服务启动在 0.0.0.0:5000
+=== Flask服务启动成功 ===
+健康检查地址: http://0.0.0.0:5000/health
+2025-11-04 14:11:11,697 - urllib3.connectionpool - DEBUG - [connectionpool.py:241] - Starting new HTTP connection (1): localhost:11434
+2025-11-04 14:11:11,698 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - http://localhost:11434 "GET /api/tags HTTP/1.1" 200 341
+2025-11-04 14:11:11,698 - __main__ - INFO - [hf_proxy.py:553] - Ollama健康
+ * Serving Flask app 'hf_proxy'
+ * Debug mode: off
+Address already in use
+Port 5000 is in use by another program. Either identify and stop that program, or start the server with a different port.
