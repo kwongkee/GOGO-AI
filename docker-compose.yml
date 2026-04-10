@@ -1,0 +1,124 @@
+# GOGO-AI Docker Compose - 本地测试环境
+version: '3.8'
+
+services:
+  # AI客服服务
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gogo-ai
+    ports:
+      - "5000:5000"
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=gogo_ai
+      - DB_USER=gogo_user
+      - DB_PASSWORD=gogo_pass_2024
+    volumes:
+      - ./logs:/app/logs
+      - ./output:/app/output
+      - ./config.ini:/app/config.ini
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - gogo-ai-network
+    restart: unless-stopped
+
+  # Kafka（消息队列）
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: gogo-ai-kafka
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    depends_on:
+      - zookeeper
+    networks:
+      - gogo-ai-network
+    restart: unless-stopped
+
+  # Zookeeper（Kafka依赖）
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    container_name: gogo-ai-zookeeper
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/bitnami/zookeeper
+    networks:
+      - gogo-ai-network
+    restart: unless-stopped
+
+  # Redis缓存
+  redis:
+    image: redis:6-alpine
+    container_name: gogo-ai-redis
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - gogo-ai-network
+    restart: unless-stopped
+
+  # MySQL数据库
+  mysql:
+    image: mysql:5.7
+    container_name: gogo-ai-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password_2024
+      - MYSQL_DATABASE=gogo_ai
+      - MYSQL_USER=gogo_user
+      - MYSQL_PASSWORD=gogo_pass_2024
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - gogo-ai-network
+    restart: unless-stopped
+
+  # Kafka Manager（Kafka管理界面）
+  kafka-manager:
+    image: hlebalbau/kafka-manager:latest
+    container_name: gogo-ai-kafka-manager
+    environment:
+      - ZK_HOSTS=zookeeper:2181
+      - APPLICATION_SECRET=secret_key_2024
+    ports:
+      - "9000:9000"
+    depends_on:
+      - zookeeper
+    networks:
+      - gogo-ai-network
+    restart: unless-stopped
+    profiles:
+      - tools
+
+volumes:
+  kafka_data:
+  zookeeper_data:
+  redis_data:
+  mysql_data:
+
+networks:
+  gogo-ai-network:
+    driver: bridge
