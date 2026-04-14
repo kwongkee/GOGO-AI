@@ -82,6 +82,108 @@ jobs:
           name: gogo-ai-review-results
           path: review_summary.txt
 
+  # ==================== 阶段1.5: 架构文档生成 ====================
+  architecture-doc:
+    name: 架构文档生成
+    runs-on: ubuntu-latest
+    needs: code-review
+    if: github.event_name == 'push'
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置PHP环境
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+
+      - name: 生成架构文档
+        run: |
+          php -r '
+          $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(".", RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+          );
+          
+          $controllers = [];
+          $models = [];
+          $routes = [];
+          $excludeDirs = [".git", "node_modules", "vendor", "runtime", ".idea"];
+          
+          foreach ($files as $file) {
+            $path = $file->getPathname();
+            foreach ($excludeDirs as $dir) {
+              if (strpos($path, $dir) !== false) continue 2;
+            }
+            
+            if ($file->getExtension() === "php") {
+              $content = file_get_contents($path);
+              $relativePath = substr($path, 2);
+              
+              if (preg_match("/class\\s+(\\w+)/i", $content, $m)) {
+                preg_match_all("/public\\s+function\\s+(\\w+)\\s*\\(/i", $content, $methods);
+                $methods = array_filter($methods[1] ?? [], fn($x) => !in_array(strtolower($x), ["__construct", "__destruct", "__call"]));
+                
+                if (stripos($relativePath, "controller") !== false) {
+                  $controllers[] = ["class" => $m[1], "file" => $relativePath, "methods" => array_values($methods)];
+                } elseif (stripos($relativePath, "model") !== false) {
+                  preg_match("/\\$table\\s*=\\s*[\"']([^\"']+)[\"']/i", $content, $table);
+                  $models[] = ["class" => $m[1], "file" => $relativePath, "table" => $table[1] ?? "N/A", "methods" => array_values($methods)];
+                }
+              }
+            }
+          }
+          
+          $md = "# GOGO-AI 架构文档\n\n";
+          $md .= "> 生成时间: " . date("Y-m-d H:i:s") . "\n\n";
+          $md .= "## 📊 项目概览\n\n";
+          $md .= "- 控制器数量: " . count($controllers) . "\n";
+          $md .= "- 模型数量: " . count($models) . "\n\n";
+          
+          $md .= "## 🎮 控制器列表\n\n";
+          foreach ($controllers as $c) {
+            $md .= "### `{$c[\"class\"]}`\n";
+            $md .= "文件: `{$c[\"file\"]}`\n\n";
+            if ($c["methods"]) {
+              $md .= "方法:\n";
+              foreach ($c["methods"] as $method) {
+                $md .= "- `{$method}()`\n";
+              }
+            }
+            $md .= "\n";
+          }
+          
+          $md .= "## 📦 模型列表\n\n";
+          foreach ($models as $m) {
+            $md .= "### `{$m[\"class\"]}`\n";
+            $md .= "- 文件: `{$m[\"file\"]}`\n";
+            $md .= "- 数据表: `{$m[\"table\"]}`\n\n";
+          }
+          
+          $md .= "---\n_由GOGO CI/CD自动生成_\n";
+          
+          @mkdir("docs");
+          file_put_contents("docs/ARCHITECTURE.md", $md);
+          echo "架构文档已生成";
+          '
+
+      - name: 上传架构文档
+        uses: actions/upload-artifact@v4
+        with:
+          name: gogo-ai-architecture-doc
+          path: docs/
+          retention-days: 30
+
+      - name: 提交架构文档
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            git config user.name "CI Bot"
+            git config user.email "ci@gogo.com"
+            git add docs/
+            git commit -m "docs: auto-update architecture documentation" || echo "没有变更"
+            git push origin main || echo "推送失败"
+          fi
+
   # ==================== 阶段2: 生成修复建议 ====================
   generate-fix-suggestions:
     name: 生成修复建议
