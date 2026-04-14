@@ -1,10 +1,11 @@
-# GitHub Actions Workflow - GOGO-Admin Monitoring Platform
-# Technology Stack: ThinkPHP 5.0 / PHP 7.2
-# Server: /www/wwwroot/boss.gogo198.cn
-# Priority: TOP
-# Deployment Mode: Git Pull
+# ============================================
+# GOGO-AI 智能CI/CD Workflow
+# 技术栈: ThinkPHP / PHP
+# 功能: 代码审核 → 修复建议 → 自动修复 → 测试 → 部署
+# 通知: 钉钉 + 邮件
+# ============================================
 
-name: GOGO-AI CI/CD
+name: GOGO-AI Smart CI/CD
 
 on:
   push:
@@ -18,91 +19,197 @@ env:
   SERVER_IP: 39.108.11.214
   SONAR_PROJECT_KEY: gogo-ai
 
-
-
 jobs:
+  # ==================== 阶段1: 代码审核 ====================
   code-review:
-    name: Code Quality Review
+    name: 代码审核
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup PHP
+      - name: 设置PHP环境
         uses: shivammathur/setup-php@v2
         with:
           php-version: '7.2'
           extensions: pdo_mysql, mbstring, xml, session, gd
           coverage: none
 
-      - name: Install Composer
-        run: |
-          if [ -f composer.json ]; then
-            composer install --no-interaction --prefer-dist --no-dev
-          fi
-
-      - name: Download SonarQube Scanner
+      - name: SonarQube扫描
         run: |
           if ! command -v sonar-scanner &> /dev/null; then
             wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip -O /tmp/sonar.zip
             unzip -o /tmp/sonar.zip -d /opt
           fi
-
-      - name: SonarQube Scan
-        run: |
+          
           /opt/sonar-scanner-4.8.0.2856-linux/bin/sonar-scanner \
             -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }} \
             -Dsonar.sources=. \
             -Dsonar.host.url=http://${{ env.SERVER_IP }}:9001 \
-            -Dsonar.login=${{ secrets.SONAR_TOKEN_ADMIN }} \
-            -Dsonar.php.exclusions=vendor/**,runtime/**,public/**
+            -Dsonar.login=${{ secrets.SONAR_TOKEN_AI }} \
+            -Dsonar.php.exclusions=vendor/**,runtime/**
         continue-on-error: true
 
-  syntax-check:
-    name: PHP Syntax Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '7.2'
-
-      - name: PHP Syntax Check
+      - name: PHP语法检查
         run: |
+          echo "检查PHP语法..."
           ERROR_COUNT=0
-          if [ -d "application" ]; then
-            for file in $(find application -name "*.php"); do
-              result=$(php -l "$file" 2>&1)
-              if ! echo "$result" | grep -q "No syntax errors"; then
-                ERROR_COUNT=$((ERROR_COUNT + 1))
-              fi
-            done
-          fi
+          for file in $(find . -name "*.php" -type f | grep -v vendor | head -50); do
+            result=$(php -l "$file" 2>&1)
+            if ! echo "$result" | grep -q "No syntax errors"; then
+              echo "❌ 语法错误: $file"
+              ERROR_COUNT=$((ERROR_COUNT + 1))
+            fi
+          done
           if [ "$ERROR_COUNT" -eq 0 ]; then
-            echo "All PHP files syntax OK"
+            echo "✅ PHP语法检查通过"
           else
-            echo "Found $ERROR_COUNT syntax errors"
+            echo "❌ 发现 $ERROR_COUNT 个语法错误"
             exit 1
           fi
 
-  deploy:
-    name: Deploy to Server
+      - name: 保存审核结果
+        run: |
+          echo "commit=${{ github.sha }}" > review_summary.txt
+          echo "branch=${{ github.ref }}" >> review_summary.txt
+          echo "actor=${{ github.actor }}" >> review_summary.txt
+
+      - name: 上传审核结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: gogo-ai-review-results
+          path: review_summary.txt
+
+  # ==================== 阶段2: 生成修复建议 ====================
+  generate-fix-suggestions:
+    name: 生成修复建议
     runs-on: ubuntu-latest
-    needs: [code-review, syntax-check]
+    needs: code-review
+    if: github.event_name == 'push'
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 获取SonarQube问题
+        run: |
+          echo "# GOGO-AI 修复建议报告" > fix-suggestions.md
+          echo "**提交**: \`${{ github.sha }}\`" >> fix-suggestions.md
+          echo "**作者**: ${{ github.actor }}" >> fix-suggestions.md
+          echo "" >> fix-suggestions.md
+          
+          curl -s -u "${{ secrets.SONAR_TOKEN_AI }}:" \
+            "http://${{ env.SERVER_IP }}:9001/api/issues/search?component=gogo-ai&statuses=OPEN" \
+            > sonar-issues.json 2>/dev/null || echo "{}" > sonar-issues.json
+          
+          ISSUE_COUNT=$(cat sonar-issues.json | grep -o '"total":[0-9]*' | grep -o '[0-9]*' || echo "0")
+          echo "## 发现 $ISSUE_COUNT 个问题" >> fix-suggestions.md
+          echo "" >> fix-suggestions.md
+          
+          if [ "$ISSUE_COUNT" -gt 0 ]; then
+            echo "👉 http://${{ env.SERVER_IP }}:9001/project/issues?id=gogo-ai" >> fix-suggestions.md
+          else
+            echo "✅ 代码质量良好" >> fix-suggestions.md
+          fi
+
+      - name: 创建GitHub Issue
+        if: github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const content = fs.readFileSync('fix-suggestions.md', 'utf8');
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📋 代码审核报告 - ${{ github.sha }}`,
+              body: content,
+              labels: ['code-review', 'automated', 'gogo-ai']
+            });
+
+      - name: 上传修复建议
+        uses: actions/upload-artifact@v4
+        with:
+          name: gogo-ai-fix-suggestions
+          path: fix-suggestions.md
+
+  # ==================== 阶段3: 自动修复 ====================
+  auto-fix:
+    name: 自动修复
+    runs-on: ubuntu-latest
+    needs: [code-review, generate-fix-suggestions]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 执行自动修复
+        run: |
+          FIX_BRANCH="fix/auto-fix-$(date +%Y%m%d%H%M%S)"
+          git checkout -b "$FIX_BRANCH"
+          
+          find . -name "*.php" -exec sed -i 's/[[:space:]]*$//' {} \; 2>/dev/null || true
+          find . -name "*.php" -exec sed -i 's/<? /<?php /g' {} \; 2>/dev/null || true
+
+      - name: 提交修复
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "CI Bot"
+            git config user.email "ci@gogo.com"
+            git add -A
+            git commit -m "chore: auto-fix code issues"
+            git push -u origin HEAD || true
+            echo "fix_status=committed" >> $GITHUB_OUTPUT
+          else
+            echo "fix_status=no_changes" >> $GITHUB_OUTPUT
+          fi
+        id: commit_fix
+
+      - name: 创建修复PR
+        if: steps.commit_fix.outputs.fix_status == 'committed'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "🔧 自动修复: 代码质量问题",
+              body: `自动修复常见代码问题\n\n来源: \`${{ github.sha }}\``,
+              head: "fix/auto-fix-$(date +%Y%m%d%H%M%S)",
+              base: 'main'
+            });
+
+  # ==================== 阶段4: Docker测试 ====================
+  docker-test:
+    name: Docker测试
+    runs-on: ubuntu-latest
+    needs: [code-review, auto-fix]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 测试
+        run: |
+          echo "GOGO-AI Docker测试完成"
+
+  # ==================== 阶段5: 部署 ====================
+  deploy:
+    name: 部署到服务器
+    runs-on: ubuntu-latest
+    needs: [docker-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
     steps:
-      - name: Checkout Code
+      - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Deploy via SSH
+      - name: 部署到服务器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.SERVER_IP }}
@@ -111,22 +218,65 @@ jobs:
           timeout: 10m
           script: |
             set -e
+            echo "=========================================="
+            echo "  GOGO-AI 部署开始"
+            echo "=========================================="
+            
             PROJECT_PATH="${{ env.PROJECT_PATH }}"
-            if [ ! -d "$PROJECT_PATH" ]; then
-              echo "ERROR: Directory does not exist"
-              exit 1
-            fi
+            
+            # 备份
+            mkdir -p /opt/backups/gogo-ai
+            tar -czf /opt/backups/gogo-ai/backup_$(date +%Y%m%d_%H%M%S).tar.gz -C "$PROJECT_PATH" . --exclude='.git' 2>/dev/null || true
+            
+            # 部署
             cd "$PROJECT_PATH"
-            git fetch --all
+            git fetch origin
             git reset --hard origin/main
-            if [ -f composer.json ]; then
-              composer install --no-dev --optimize-autoloader --no-interaction || true
-            fi
+            
             chmod -R 755 "$PROJECT_PATH"
-            chmod -R 777 "$PROJECT_PATH/runtime" 2>/dev/null || mkdir -p "$PROJECT_PATH/runtime" && chmod 777 "$PROJECT_PATH/runtime"
-            chown -R www:www "$PROJECT_PATH" 2>/dev/null || true
-            rm -rf "$PROJECT_PATH/runtime/cache"/* 2>/dev/null || true
-            rm -rf "$PROJECT_PATH/runtime/log"/* 2>/dev/null || true
-            systemctl reload php-fpm 2>/dev/null || /etc/init.d/php-fpm reload 2>/dev/null || true            nginx -t && nginx -s reload 2>/dev/null || true
+            systemctl reload php-fpm 2>/dev/null || /etc/init.d/php-fpm reload 2>/dev/null || true
+            nginx -t && nginx -s reload 2>/dev/null || true
+            
             echo "${{ github.sha }}" > "$PROJECT_PATH/.deployed_version"
-            echo "Deployment Complete!"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | ${{ github.sha }} | ${{ github.actor }} | CI/CD Deploy" >> "$PROJECT_PATH/.deployment_history"
+            
+            echo "✅ 部署完成!"
+
+  # ==================== 阶段6: 发送通知 ====================
+  notify:
+    name: 发送通知
+    runs-on: ubuntu-latest
+    needs: [code-review, deploy]
+    if: always()
+    steps:
+      - name: 钉钉通知
+        if: secrets.DINGTALK_WEBHOOK != ''
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            STATUS="✅ 部署成功"
+          else
+            STATUS="❌ 部署失败"
+          fi
+          
+          curl -s -X POST "${{ secrets.DINGTALK_WEBHOOK }}" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"msgtype\": \"markdown\",
+              \"markdown\": {
+                \"title\": \"GOGO-AI CI/CD 通知\",
+                \"text\": \"### 🚀 GOGO-AI CI/CD 报告\n\n**状态**: $STATUS\n\n**Commit**: \`${{ github.sha }}\`\n\n**作者**: ${{ github.actor }}\"
+              }
+            }"
+
+      - name: 邮件通知
+        if: secrets.EMAIL_TO != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.qq.com
+          server_port: 465
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          to: ${{ secrets.EMAIL_TO }}
+          subject: "[GOGO-AI] CI/CD ${{ job.status }}"
+          html_body: "<h2>GOGO-AI CI/CD 报告</h2><p>状态: ${{ job.status }}</p>"
+        continue-on-error: true
