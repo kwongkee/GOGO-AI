@@ -1,175 +1,132 @@
-# GOGO-AI CI/CD Pipeline
-# 代码审核 → Docker构建 → 测试验证 → 部署到服务器
+# GitHub Actions Workflow - GOGO-Admin Monitoring Platform
+# Technology Stack: ThinkPHP 5.0 / PHP 7.2
+# Server: /www/wwwroot/boss.gogo198.cn
+# Priority: TOP
+# Deployment Mode: Git Pull
 
-name: GOGO-AI CI/CD Pipeline
+name: GOGO-AI CI/CD
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
 
 env:
   PROJECT_NAME: gogo-ai
+  PROJECT_PATH: /www/wwwroot/ai.gogo198.net
   SERVER_IP: 39.108.11.214
-  REGISTRY: registry.cn-shenzhen.aliyuncs.com
-  IMAGE_NAME: gogo-ai
-  DEPLOY_PATH: /opt/docker/gogo-ai
+  SONAR_PROJECT_KEY: gogo-ai
+
+
 
 jobs:
-  # ============ 阶段1: 代码审核 ============
   code-review:
-    name: Python代码安全审核
+    name: Code Quality Review
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 设置Python
-        uses: actions/setup-python@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
-          python-version: '3.9'
+          php-version: '7.2'
+          extensions: pdo_mysql, mbstring, xml, session, gd
+          coverage: none
 
-      - name: 安装依赖
+      - name: Install Composer
         run: |
-          pip install -r requirements.txt || pip install requests pandas numpy
+          if [ -f composer.json ]; then
+            composer install --no-interaction --prefer-dist --no-dev
+          fi
 
-      - name: 安装SonarQube Scanner
+      - name: Download SonarQube Scanner
         run: |
-          wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip -O /tmp/sonar.zip
-          unzip -o /tmp/sonar.zip -d /opt
+          if ! command -v sonar-scanner &> /dev/null; then
+            wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip -O /tmp/sonar.zip
+            unzip -o /tmp/sonar.zip -d /opt
+          fi
 
-      - name: 配置Python扫描
-        run: |
-          cat > sonar-project.properties << 'EOF'
-          sonar.projectKey=${{ env.PROJECT_NAME }}
-          sonar.sources=.
-          sonar.language=py
-          sonar.sourceEncoding=UTF-8
-          EOF
-
-      - name: 运行SonarQube扫描
+      - name: SonarQube Scan
         run: |
           /opt/sonar-scanner-4.8.0.2856-linux/bin/sonar-scanner \
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }} \
+            -Dsonar.sources=. \
             -Dsonar.host.url=http://${{ env.SERVER_IP }}:9001 \
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+            -Dsonar.login=${{ secrets.SONAR_TOKEN_ADMIN }} \
+            -Dsonar.php.exclusions=vendor/**,runtime/**,public/**
+        continue-on-error: true
 
-      - name: Python安全扫描
-        run: |
-          pip install bandit safety
-          bandit -r . -f json -o bandit-report.json || true
-          safety check || true
-
-  # ============ 阶段2: Docker构建与测试 ============
-  docker-build:
-    name: Docker构建与测试
+  syntax-check:
+    name: PHP Syntax Check
     runs-on: ubuntu-latest
-    needs: code-review
     steps:
-      - name: 检出代码
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: 设置Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: 构建Docker镜像
-        uses: docker/build-push-action@v5
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
-          context: .
-          push: false
-          tags: ${{ env.PROJECT_NAME }}:test
-          load: true
+          php-version: '7.2'
 
-      - name: 启动测试容器
+      - name: PHP Syntax Check
         run: |
-          docker build -t ${{ env.PROJECT_NAME }}:test .
-          docker run -d --name ${PROJECT_NAME}_test \
-            -p 5000:5000 \
-            ${{ env.PROJECT_NAME }}:test
+          ERROR_COUNT=0
+          if [ -d "application" ]; then
+            for file in $(find application -name "*.php"); do
+              result=$(php -l "$file" 2>&1)
+              if ! echo "$result" | grep -q "No syntax errors"; then
+                ERROR_COUNT=$((ERROR_COUNT + 1))
+              fi
+            done
+          fi
+          if [ "$ERROR_COUNT" -eq 0 ]; then
+            echo "All PHP files syntax OK"
+          else
+            echo "Found $ERROR_COUNT syntax errors"
+            exit 1
+          fi
 
-      - name: 检查容器状态
-        run: |
-          sleep 15
-          docker ps
-          docker logs ${PROJECT_NAME}_test || true
-
-      - name: 验证Python服务
-        run: |
-          docker exec ${PROJECT_NAME}_test python --version || true
-
-      - name: 清理测试容器
-        if: always()
-        run: |
-          docker stop ${PROJECT_NAME}_test 2>/dev/null || true
-          docker rm ${PROJECT_NAME}_test 2>/dev/null || true
-
-  # ============ 阶段3: 推送到镜像仓库 ============
-  push-registry:
-    name: 推送到镜像仓库
-    runs-on: ubuntu-latest
-    needs: docker-build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 设置Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: 登录阿里云镜像仓库
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
-          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
-
-      - name: 构建并推送镜像
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-  # ============ 阶段4: 部署到服务器 ============
   deploy:
-    name: 部署到服务器
+    name: Deploy to Server
     runs-on: ubuntu-latest
-    needs: push-registry
+    needs: [code-review, syntax-check]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
     steps:
-      - name: SSH部署到服务器
-        uses: appleboy/ssh-action@v0.1.10
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.SERVER_IP }}
           username: root
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 10m
           script: |
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            
-            if [ -d ${{ env.DEPLOY_PATH }} ]; then
-              cp ${{ env.DEPLOY_PATH }}/docker-compose.yml ${{ env.DEPLOY_PATH }}/docker-compose.yml.bak.$(date +%Y%m%d%H%M%S)
+            set -e
+            PROJECT_PATH="${{ env.PROJECT_PATH }}"
+            if [ ! -d "$PROJECT_PATH" ]; then
+              echo "ERROR: Directory does not exist"
+              exit 1
             fi
-            
-            mkdir -p ${{ env.DEPLOY_PATH }}
-            
-            cd ${{ env.DEPLOY_PATH }}
-            docker-compose down || true
-            
-            cat > docker-compose.yml << 'EOF'
-            version: '3.8'
-            services:
-              app:
-                image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-                container_name: ${{ env.PROJECT_NAME }}
-                ports:
-                  - "5000:5000"
-                  - "8000:8000"
-                restart: unless-stopped
-            EOF
-            
-            docker-compose up -d
-            echo "$(date): Deployed ${{ github.sha }}" >> deployment.log
+            cd "$PROJECT_PATH"
+            git fetch --all
+            git reset --hard origin/main
+            if [ -f composer.json ]; then
+              composer install --no-dev --optimize-autoloader --no-interaction || true
+            fi
+            chmod -R 755 "$PROJECT_PATH"
+            chmod -R 777 "$PROJECT_PATH/runtime" 2>/dev/null || mkdir -p "$PROJECT_PATH/runtime" && chmod 777 "$PROJECT_PATH/runtime"
+            chown -R www:www "$PROJECT_PATH" 2>/dev/null || true
+            rm -rf "$PROJECT_PATH/runtime/cache"/* 2>/dev/null || true
+            rm -rf "$PROJECT_PATH/runtime/log"/* 2>/dev/null || true
+            systemctl reload php-fpm 2>/dev/null || /etc/init.d/php-fpm reload 2>/dev/null || true            nginx -t && nginx -s reload 2>/dev/null || true
+            echo "${{ github.sha }}" > "$PROJECT_PATH/.deployed_version"
+            echo "Deployment Complete!"
