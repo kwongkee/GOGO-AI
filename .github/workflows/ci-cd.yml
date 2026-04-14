@@ -269,7 +269,6 @@ jobs:
             }"
 
       - name: 邮件通知
-        if: secrets.EMAIL_TO != ''
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.qq.com
